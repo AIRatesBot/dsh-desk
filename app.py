@@ -1,27 +1,23 @@
 import streamlit as st
+import pandas as pd
 
 st.set_page_config(page_title="DSH Desk", layout="wide")
-st.title("DSH — Candidate Monitor")
+st.title("DSH - Candidate Monitor")
 
 conn = st.connection("neon", type="sql")
 
+
 # ---------------------------------------------------------------
-# Top candidates for further research
+# 1. Top candidates
 # ---------------------------------------------------------------
 st.subheader("Top candidates for further research")
 df = conn.query("""
-    SELECT strategy_name,
-           alpha_source,
-           is_sharpe,
-           oos_sharpe,
-           deflated_sharpe,
-           dsr_pvalue,
-           num_trials,
-           baseline_delta,
-           max_drawdown,
-           created_at
+    SELECT strategy_name, alpha_source, is_sharpe, oos_sharpe,
+           deflated_sharpe, dsr_pvalue, num_trials,
+           baseline_delta, max_drawdown, created_at
     FROM candidates
     WHERE gate_status = 'passed'
+      AND position('test_' in strategy_name) != 1
     ORDER BY deflated_sharpe DESC NULLS LAST
     LIMIT 20;
 """, ttl="30s")
@@ -29,42 +25,20 @@ df = conn.query("""
 if df.empty:
     st.info("No passing candidates yet.")
 else:
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "strategy_name":  st.column_config.TextColumn("Strategy"),
-            "alpha_source":   st.column_config.TextColumn("Alpha"),
-            "is_sharpe":      st.column_config.NumberColumn("IS Sharpe",    format="%.3f"),
-            "oos_sharpe":     st.column_config.NumberColumn("OOS Sharpe",   format="%.3f"),
-            "deflated_sharpe": st.column_config.NumberColumn("DSR",         format="%.3f",
-                                  help="Deflated Sharpe Ratio (multi-test corrected)"),
-            "dsr_pvalue":     st.column_config.NumberColumn("DSR p",        format="%.4f",
-                                  help="p-value; must be < 0.05 to pass"),
-            "num_trials":     st.column_config.NumberColumn("Trials",       format="%d"),
-            "baseline_delta": st.column_config.NumberColumn("vs B&H",       format="%+.3f"),
-            "max_drawdown":   st.column_config.NumberColumn("Max DD",       format="%.3f"),
-            "created_at":     st.column_config.DatetimeColumn("Created",    format="YYYY-MM-DD HH:mm"),
-        },
-    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
 
 # ---------------------------------------------------------------
-# Rejected candidates with reason codes
+# 2. Rejected
 # ---------------------------------------------------------------
-st.subheader("Rejected — reason")
+st.subheader("Rejected - reason")
 rej = conn.query("""
-    SELECT strategy_name,
-           alpha_source,
-           reject_reason,
-           oos_sharpe,
-           deflated_sharpe,
-           dsr_pvalue,
-           baseline_delta,
-           max_drawdown,
-           created_at
+    SELECT strategy_name, alpha_source, reject_reason,
+           oos_sharpe, deflated_sharpe, dsr_pvalue,
+           baseline_delta, max_drawdown, created_at
     FROM candidates
     WHERE gate_status = 'rejected'
+      AND position('test_' in strategy_name) != 1
     ORDER BY created_at DESC
     LIMIT 50;
 """, ttl="30s")
@@ -72,67 +46,98 @@ rej = conn.query("""
 if rej.empty:
     st.caption("No rejected candidates.")
 else:
-    st.dataframe(
-        rej,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "strategy_name":  st.column_config.TextColumn("Strategy"),
-            "alpha_source":   st.column_config.TextColumn("Alpha"),
-            "reject_reason":  st.column_config.TextColumn("Reason"),
-            "oos_sharpe":     st.column_config.NumberColumn("OOS Sharpe", format="%.3f"),
-            "deflated_sharpe": st.column_config.NumberColumn("DSR",       format="%.3f"),
-            "dsr_pvalue":     st.column_config.NumberColumn("DSR p",      format="%.4f"),
-            "baseline_delta": st.column_config.NumberColumn("vs B&H",     format="%+.3f"),
-            "max_drawdown":   st.column_config.NumberColumn("Max DD",     format="%.3f"),
-            "created_at":     st.column_config.DatetimeColumn("Created",  format="YYYY-MM-DD HH:mm"),
-        },
-    )
+    st.dataframe(rej, use_container_width=True, hide_index=True)
+
 
 # ---------------------------------------------------------------
-# Gate pass-rate breakdown
+# 3. Gate breakdown
 # ---------------------------------------------------------------
-st.subheader("Gate pass rate — last 30 days")
-
-breakdown = conn.query("""
+st.subheader("Gate breakdown - last 30 days")
+gb = conn.query("""
     SELECT
-      COUNT(*) FILTER (WHERE gate_status = 'passed')                              AS passed,
-      COUNT(*) FILTER (WHERE reject_reason = 'weak_oos')                          AS weak_oos,
-      COUNT(*) FILTER (WHERE reject_reason = 'cost_kill')                         AS cost_kill,
-      COUNT(*) FILTER (WHERE reject_reason = 'no_edge')                           AS no_edge,
-      COUNT(*) FILTER (WHERE reject_reason = 'max_dd')                            AS max_dd,
-      COUNT(*) FILTER (WHERE reject_reason = 'dsr_fail')                          AS dsr_fail,
-      COUNT(*)                                                                    AS total
+      COUNT(*) FILTER (WHERE gate_status = 'passed')      AS passed,
+      COUNT(*) FILTER (WHERE reject_reason = 'weak_oos')  AS weak_oos,
+      COUNT(*) FILTER (WHERE reject_reason = 'cost_kill') AS cost_kill,
+      COUNT(*) FILTER (WHERE reject_reason = 'no_edge')   AS no_edge,
+      COUNT(*) FILTER (WHERE reject_reason = 'max_dd')    AS max_dd,
+      COUNT(*) FILTER (WHERE reject_reason = 'dsr_fail')  AS dsr_fail,
+      COUNT(*)                                             AS total
     FROM candidates
     WHERE created_at > NOW() - INTERVAL '30 days'
-      AND strategy_name NOT LIKE 'test_%';
+      AND position('test_' in strategy_name) != 1;
 """, ttl="60s")
 
-st.dataframe(breakdown, use_container_width=True, hide_index=True)
+if gb.empty or int(gb.iloc[0]["total"]) == 0:
+    st.caption("No runs in the last 30 days.")
+else:
+    row = gb.iloc[0]
+    total = int(row["total"])
+    passed = int(row["passed"])
+    cols = st.columns(6)
+    cols[0].metric("Passed", passed)
+    cols[1].metric("weak_oos", int(row["weak_oos"]))
+    cols[2].metric("cost_kill", int(row["cost_kill"]))
+    cols[3].metric("no_edge", int(row["no_edge"]))
+    cols[4].metric("max_dd", int(row["max_dd"]))
+    cols[5].metric("dsr_fail", int(row["dsr_fail"]))
 
-# Pipeline health warning
-if not breakdown.empty and breakdown.iloc[0]["total"] > 0:
-    total = int(breakdown.iloc[0]["total"])
-    passed = int(breakdown.iloc[0]["passed"] or 0)
-    pass_rate = passed / total
-    if pass_rate > 0.50:
-        st.warning(
-            f"⚠️ Pass rate {pass_rate:.0%} is above 50%. Gates may be too loose — "
-            f"review thresholds or check for data leakage."
-        )
+    pass_rate = (passed / total) * 100 if total > 0 else 0
+    st.caption("Total: " + str(total) + "  |  Pass rate: " + str(round(pass_rate, 1)) + "%")
+
+    if pass_rate > 50:
+        st.warning("Pass rate above 50%. Gates may be too loose.")
     elif pass_rate == 0 and total > 10:
-        st.info(
-            f"ℹ️ Pass rate is 0% across {total} runs. Gates may be too strict, "
-            f"or the tested strategies genuinely lack edge."
-        )
+        st.info("No passes across " + str(total) + " runs. Gates may be too strict or strategies genuinely lack edge.")
+
 
 # ---------------------------------------------------------------
-# Data coverage disclaimer
+# 4. Alpha source breakdown
+# ---------------------------------------------------------------
+st.subheader("Alpha source breakdown")
+ab = conn.query("""
+    SELECT alpha_source,
+           COUNT(*) AS runs,
+           COUNT(*) FILTER (WHERE gate_status = 'passed') AS passed,
+           MAX(num_trials) AS max_trials,
+           MAX(created_at) AS last_run
+    FROM candidates
+    WHERE position('test_' in strategy_name) != 1
+    GROUP BY alpha_source
+    ORDER BY runs DESC;
+""", ttl="60s")
+
+if ab.empty:
+    st.caption("No runs yet.")
+else:
+    st.dataframe(ab, use_container_width=True, hide_index=True)
+    for _, r in ab.iterrows():
+        mt = r["max_trials"]
+        if pd.notna(mt) and int(mt) > 15:
+            st.warning("Alpha source '" + str(r["alpha_source"]) + "' has " + str(int(mt)) + " trials. DSR gate is now very strict.")
+
+
+# ---------------------------------------------------------------
+# 5. DSR trend
+# ---------------------------------------------------------------
+st.subheader("DSR trend - last 50 runs")
+trend = conn.query("""
+    SELECT created_at, oos_sharpe, deflated_sharpe
+    FROM candidates
+    WHERE position('test_' in strategy_name) != 1
+      AND deflated_sharpe IS NOT NULL
+    ORDER BY created_at ASC
+    LIMIT 50;
+""", ttl="60s")
+
+if trend.empty:
+    st.caption("No data yet.")
+else:
+    trend = trend.set_index("created_at")
+    st.line_chart(trend)
+
+
+# ---------------------------------------------------------------
+# 6. Disclaimer
 # ---------------------------------------------------------------
 st.divider()
-st.caption(
-    "⚠️ Data coverage: US Treasury yield curve and BTC daily closes only. "
-    "Swap rates, breakevens and vol surfaces are NOT included. "
-    "A 'passed' candidate is a candidate for further research — "
-    "not a validated strategy."
-)
+st.caption("Data coverage: BTC daily closes (yfinance). Swap rates, breakevens and vol surfaces NOT included. A 'passed' candidate is a candidate for further research - not a validated strategy.")
