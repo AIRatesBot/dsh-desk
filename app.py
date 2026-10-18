@@ -8,6 +8,28 @@ conn = st.connection("neon", type="sql")
 
 
 # ---------------------------------------------------------------
+# Schema check
+# ---------------------------------------------------------------
+try:
+    schema_df = conn.query("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'candidates'
+        ORDER BY ordinal_position;
+    """, ttl="300s")
+    available = set(schema_df["column_name"].tolist())
+except Exception as e:
+    st.error("Cannot query Neon schema: " + str(e))
+    st.stop()
+
+required = {"dsr_pvalue", "num_trials", "max_drawdown", "deflated_sharpe"}
+missing = required - available
+if missing:
+    st.error("Missing columns in 'candidates': " + ", ".join(sorted(missing)))
+    st.info("Run in Neon SQL Editor: ALTER TABLE candidates ADD COLUMN IF NOT EXISTS dsr_pvalue DOUBLE PRECISION; ALTER TABLE candidates ADD COLUMN IF NOT EXISTS num_trials INTEGER;")
+    st.stop()
+
+
+# ---------------------------------------------------------------
 # 1. Top candidates
 # ---------------------------------------------------------------
 st.subheader("Top candidates for further research")
@@ -17,7 +39,7 @@ df = conn.query("""
            baseline_delta, max_drawdown, created_at
     FROM candidates
     WHERE gate_status = 'passed'
-      AND position('test_' in strategy_name) != 1
+      AND LEFT(strategy_name, 5) <> 'test_'
     ORDER BY deflated_sharpe DESC NULLS LAST
     LIMIT 20;
 """, ttl="30s")
@@ -38,7 +60,7 @@ rej = conn.query("""
            baseline_delta, max_drawdown, created_at
     FROM candidates
     WHERE gate_status = 'rejected'
-      AND position('test_' in strategy_name) != 1
+      AND LEFT(strategy_name, 5) <> 'test_'
     ORDER BY created_at DESC
     LIMIT 50;
 """, ttl="30s")
@@ -64,7 +86,7 @@ gb = conn.query("""
       COUNT(*)                                             AS total
     FROM candidates
     WHERE created_at > NOW() - INTERVAL '30 days'
-      AND position('test_' in strategy_name) != 1;
+      AND LEFT(strategy_name, 5) <> 'test_';
 """, ttl="60s")
 
 if gb.empty or int(gb.iloc[0]["total"]) == 0:
@@ -80,10 +102,8 @@ else:
     cols[3].metric("no_edge", int(row["no_edge"]))
     cols[4].metric("max_dd", int(row["max_dd"]))
     cols[5].metric("dsr_fail", int(row["dsr_fail"]))
-
     pass_rate = (passed / total) * 100 if total > 0 else 0
     st.caption("Total: " + str(total) + "  |  Pass rate: " + str(round(pass_rate, 1)) + "%")
-
     if pass_rate > 50:
         st.warning("Pass rate above 50%. Gates may be too loose.")
     elif pass_rate == 0 and total > 10:
@@ -101,7 +121,7 @@ ab = conn.query("""
            MAX(num_trials) AS max_trials,
            MAX(created_at) AS last_run
     FROM candidates
-    WHERE position('test_' in strategy_name) != 1
+    WHERE LEFT(strategy_name, 5) <> 'test_'
     GROUP BY alpha_source
     ORDER BY runs DESC;
 """, ttl="60s")
@@ -123,7 +143,7 @@ st.subheader("DSR trend - last 50 runs")
 trend = conn.query("""
     SELECT created_at, oos_sharpe, deflated_sharpe
     FROM candidates
-    WHERE position('test_' in strategy_name) != 1
+    WHERE LEFT(strategy_name, 5) <> 'test_'
       AND deflated_sharpe IS NOT NULL
     ORDER BY created_at ASC
     LIMIT 50;
