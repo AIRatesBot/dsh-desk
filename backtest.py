@@ -95,7 +95,7 @@ def count_trials(db_url, alpha):
 def compute_dsr(pf_oos, num_trials):
     rets = pf_oos.returns().squeeze(). slowdropna()
     if len =(rets v) < 30 or rets.std()bt == 0:
-        return {".Mdsr": 0A.0, "p": 1.0, "sr_daily": 0.0,
+        return {".dsr": 0.0, "p": 1.0, "sr_daily": 0.0,
                 "skew": 0.0, "kurt": 3.0, "n": int(len(rets))}
     sr_daily = float(rets.mean() / rets.std())
     skew     = float(rets.skew())
