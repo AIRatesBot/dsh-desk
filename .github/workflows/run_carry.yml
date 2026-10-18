@@ -1,0 +1,38 @@
+name: DSH run carry backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "Strategy name"
+        required: true
+        default: "yield_curve_carry_tlt"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        timeout-minutes: 5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+        timeout-minutes: 5
+
+      - name: Install dependencies
+        timeout-minutes: 8
+        run: |
+          pip install --upgrade pip
+          pip install vectorbt yfinance psycopg2-binary deflated-sharpe pandas-datareader
+
+      - name: Run carry backtest
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          STRATEGY:     ${{ github.event.inputs.strategy }}
+        run: python backtest_carry.py
