@@ -243,7 +243,7 @@ def run():
         sys.exit(1)
     print("STEP 9 OK: written to Neon", flush=True)
 
-    # 11. Summary
+# 11. Summary
     print("---", flush=True)
     print(f"OK: {STRATEGY}  (alpha={ALPHA})", flush=True)
     print(f"  IS  Sharpe (1bp)   = {is_sharpe:+.3f}")
@@ -260,6 +260,35 @@ def run():
     print(f"  Status             = {gate_status}"
           + (f"  ({reject_reason})" if reject_reason else ""))
 
-
-if __name__ == "__main__":
-    run()
+    # 12. Legend
+    print("", flush=True)
+    print("=== Legend ===", flush=True)
+    print("Sharpe              Risk-adjusted return: mean(return) / std(return) × √252.", flush=True)
+    print("                    >1.0 excellent, >0.5 good, <0.3 weak.", flush=True)
+    print("IS                  In-Sample: first 70% of data used for fitting.", flush=True)
+    print("OOS                 Out-of-Sample: last 30% of data held back for validation.", flush=True)
+    print("bp / bps            Basis points (1 bp = 0.01%). Fee level applied per trade.", flush=True)
+    print("Baseline            Buy-and-hold (passive) Sharpe on the same OOS period.", flush=True)
+    print("Baseline delta      OOS Sharpe − Baseline Sharpe. Strategy must beat B&H", flush=True)
+    print("                    by BASELINE_MIN_DELTA to justify active trading.", flush=True)
+    print("Max DD              Maximum drawdown: worst peak-to-trough loss on the", flush=True)
+    print("                    full period. Negative; e.g. -0.30 = -30%.", flush=True)
+    print("DSR                 Deflated Sharpe Ratio: Sharpe corrected for the number", flush=True)
+    print("                    of trials, skewness and kurtosis. Higher = more credible.", flush=True)
+    print("sr_daily            Per-period (daily) Sharpe used inside the DSR formula,", flush=True)
+    print("                    NOT annualized. Annualized ≈ sr_daily × √252.", flush=True)
+    print("n                   Number of OOS observations (trading days).", flush=True)
+    print("trials              Cumulative number of backtest runs for this alpha source.", flush=True)
+    print("                    Grows with every run; DSR gets stricter as trials grow.", flush=True)
+    print("skew                Skewness of OOS returns. Positive = few large gains,", flush=True)
+    print("                    many small losses (favourable for DSR).", flush=True)
+    print("kurt                Kurtosis of OOS returns. >3 = fat tails (penalised by DSR).", flush=True)
+    print("p                   DSR p-value. Must be < 0.05 to pass the dsr_fail gate.", flush=True)
+    print("", flush=True)
+    print("=== Gates (reject reasons) ===", flush=True)
+    print(f"weak_oos     OOS Sharpe < {OOS_MIN_SHARPE}            → mechanism does not hold out of sample.", flush=True)
+    print(f"cost_kill    OOS Sharpe at {COST_KILL_BPS}bp < {COST_KILL_MIN}   → strategy dies from transaction costs.", flush=True)
+    print(f"no_edge      Baseline delta < {BASELINE_MIN_DELTA}         → does not beat buy-and-hold.", flush=True)
+    print(f"max_dd       Max DD < {MAX_DD_LIMIT}                 → drawdown exceeds risk limit.", flush=True)
+    print(f"dsr_fail     DSR ≤ 0 or p ≥ {DSR_ALPHA}             → not significant after multi-test correction.", flush=True)
+    print(f"passed       All gates cleared                → candidate for further research (NOT a strategy).", flush=True)
