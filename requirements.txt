@@ -1,4 +1,4 @@
 streamlit>=1.32
 psycopg2-binary>=2.9.9
-sqlalchemy>=2.0
+sqlalchemy<2.1
 pandas
