@@ -25,7 +25,7 @@ OOS_MIN_SHARPE      = 0.30
 COST_LEVELS_BPS     = [0, 1, 5]
 COST_KILL_BPS       = 1
 COST_KILL_MIN       = 0.10
-BASELINE_MIN_DELTA  = 0.0
+BASELINE_MIN_DELTA  = 0.20
 MAX_DD_LIMIT        = -0.30
 DSR_ALPHA           = 0.05      # DSR p-value must be below this to pass
 
