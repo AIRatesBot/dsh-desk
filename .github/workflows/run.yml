@@ -1,0 +1,36 @@
+name: DSH run backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: "Strategy name"
+        required: true
+        default: "sma_cross_btc"
+      alpha:
+        description: "Alpha source (mom/carry/rv/vol)"
+        required: true
+        default: "mom"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install vectorbt yfinance psycopg2-binary
+
+      - name: Run backtest
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STRATEGY:     ${{ github.event.inputs.strategy }}
+          ALPHA:        ${{ github.event.inputs.alpha }}
+        run: python backtest.py
